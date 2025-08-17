@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:meon/meon_home_page.dart';
+import 'package:meon/onboarding_page.dart';
 import 'package:meon/signup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
@@ -341,6 +342,15 @@ class _LoginPageState extends State<LoginPage> {
                     ],
                   ),
                 ),
+
+                TextButton(onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const OnboardingPage(),
+                    ),
+                  );
+                }, child: const Text('Skip Onboarding')),
 
                 const SizedBox(height: 24),
 

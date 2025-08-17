@@ -401,7 +401,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
-                        FriendRequestsPage(currentUserId: widget.currentUserId),
+                        FriendRequestsPage(currentUserId: widget.currentUserId, currentUserName: '',),
                   ),
                 );
               },

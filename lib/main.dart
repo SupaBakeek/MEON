@@ -109,7 +109,6 @@ class _MeonAppState extends State<MeonApp> {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Meon',
       home: homeScreen,
       routes: {
         '/onboarding': (context) => const OnboardingPage(),

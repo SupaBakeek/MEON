@@ -16,10 +16,11 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _loading = true;
-  int _remindOnlineMinutes = 5;
+  int _offlineReminderMinutes = 5;
   bool _soundEnabled = true;
   bool _vibrationEnabled = true;
   bool _screenLightEnabled = true;
+  bool _offlineReminderEnabled = true;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -36,7 +37,8 @@ class _SettingsPageState extends State<SettingsPage> {
       final sound = prefs.getBool('notif_sound_${widget.userId}');
       final vibration = prefs.getBool('notif_vibration_${widget.userId}');
       final screenLight = prefs.getBool('notif_screen_light_${widget.userId}');
-      final remindMinutes = prefs.getInt('remind_online_minutes_${widget.userId}');
+      final offlineReminderMinutes = prefs.getInt('offline_reminder_minutes_${widget.userId}');
+      final offlineReminderOn = prefs.getBool('offline_reminder_enabled_${widget.userId}');
 
       final doc = await _firestore.collection('users').doc(widget.userId).get();
       final data = doc.data();
@@ -45,7 +47,8 @@ class _SettingsPageState extends State<SettingsPage> {
         _soundEnabled = data?['notifSound'] ?? sound ?? true;
         _vibrationEnabled = data?['notifVibration'] ?? vibration ?? true;
         _screenLightEnabled = data?['notifScreenLight'] ?? screenLight ?? true;
-        _remindOnlineMinutes = data?['remindOnlineMinutes'] ?? remindMinutes ?? 5;
+        _offlineReminderMinutes = data?['offlineReminderMinutes'] ?? offlineReminderMinutes ?? 5;
+        _offlineReminderEnabled = data?['offlineReminderEnabled'] ?? offlineReminderOn ?? true;
         _loading = false;
       });
     } catch (e) {
@@ -59,30 +62,68 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _saveRemindOnlineMinutes(int minutes) async {
+  Future<void> _saveOfflineReminderMinutes(int minutes) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('remind_online_minutes_${widget.userId}', minutes);
+      await prefs.setInt('offline_reminder_minutes_${widget.userId}', minutes);
 
       await _firestore.collection('users').doc(widget.userId).set(
-        {'remindOnlineMinutes': minutes},
+        {'offlineReminderMinutes': minutes},
         SetOptions(merge: true),
       );
     } catch (e) {
-      debugPrint('Failed to save remind time: $e');
+      debugPrint('Failed to save offline reminder time: $e');
     }
   }
 
+  Future<void> _toggleOfflineReminder(bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('offline_reminder_enabled_${widget.userId}', enabled);
+
+      await _firestore.collection('users').doc(widget.userId).set(
+        {'offlineReminderEnabled': enabled},
+        SetOptions(merge: true),
+      );
+
+      setState(() {
+        _offlineReminderEnabled = enabled;
+      });
+
+      if (enabled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Offline reminders enabled'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Offline reminders disabled'),
+            backgroundColor: Colors.grey[600],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to toggle offline reminder: $e');
+    }
+  }
+
+  // FIXED: Complete _saveSetting method
   Future<void> _saveSetting(String key, bool value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('$key${widget.userId}', value);
+      await prefs.setBool('${key}_${widget.userId}', value);
 
       String firestoreKey = '';
       if (key == 'notif_sound') {
         firestoreKey = 'notifSound';
-      } else if (key == 'notif_vibration') firestoreKey = 'notifVibration';
-      else if (key == 'notif_screen_light') firestoreKey = 'notifScreenLight';
+      } else if (key == 'notif_vibration') {
+        firestoreKey = 'notifVibration';
+      } else if (key == 'notif_screen_light') {
+        firestoreKey = 'notifScreenLight';
+      }
 
       if (firestoreKey.isNotEmpty) {
         await _firestore.collection('users').doc(widget.userId).set(
@@ -104,6 +145,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
+    Color? iconColor,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -125,12 +167,12 @@ class _SettingsPageState extends State<SettingsPage> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.teal[50],
+              color: (iconColor ?? Colors.teal).withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               icon,
-              color: Colors.teal[600],
+              color: iconColor ?? Colors.teal[600],
               size: 22,
             ),
           ),
@@ -161,7 +203,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: Colors.teal,
+            activeColor: iconColor ?? Colors.teal,
             inactiveThumbColor: Colors.grey[300],
             inactiveTrackColor: Colors.grey[200],
             trackOutlineColor: WidgetStateProperty.all(Colors.white.withOpacity(0.4)),
@@ -171,7 +213,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildRemindOnlineCard() {
+  Widget _buildOfflineReminderCard() {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -186,60 +228,126 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.teal[50],
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(
-              Icons.access_time_rounded,
-              color: Colors.teal[600],
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Remind I'm Online",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.grey[800],
-                  ),
+          // Toggle switch row
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _offlineReminderEnabled 
+                      ? Colors.orange[50] 
+                      : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Set how often to remind that you’re online',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                child: Icon(
+                  Icons.schedule_rounded,
+                  color: _offlineReminderEnabled 
+                      ? Colors.orange[600] 
+                      : Colors.grey[400],
+                  size: 22,
                 ),
-              ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Remind Me to Go Offline",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _offlineReminderEnabled 
+                          ? 'Get reminded to go offline after $_offlineReminderMinutes min online'
+                          : 'Offline reminders are disabled',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _offlineReminderEnabled,
+                onChanged: _toggleOfflineReminder,
+                activeColor: Colors.orange,
+                inactiveThumbColor: Colors.grey[300],
+                inactiveTrackColor: Colors.grey[200],
+              ),
+            ],
+          ),
+          
+          // Interval selector (only show when enabled)
+          if (_offlineReminderEnabled) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange[100]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.timer_rounded,
+                    color: Colors.orange[600],
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Remind me after:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.orange[700],
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.orange[200]!),
+                    ),
+                    child: DropdownButton<int>(
+                      value: _offlineReminderMinutes,
+                      underline: const SizedBox(),
+                      isDense: true,
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _offlineReminderMinutes = val);
+                          _saveOfflineReminderMinutes(val);
+                        }
+                      },
+                      items: [1, 5, 10, 15, 30, 60].map((minutes) {
+                        return DropdownMenuItem(
+                          value: minutes,
+                          child: Text(
+                            '$minutes min',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.orange[700],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          DropdownButton<int>(
-            value: _remindOnlineMinutes,
-            onChanged: (val) {
-              if (val != null) {
-                setState(() => _remindOnlineMinutes = val);
-                _saveRemindOnlineMinutes(val);
-              }
-            },
-            items: [1, 5, 10, 15, 30, 60].map((minutes) {
-              return DropdownMenuItem(
-                value: minutes,
-                child: Text('$minutes min'),
-              );
-            }).toList(),
-          ),
+          ],
         ],
       ),
     );
@@ -342,10 +450,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ],
                     ),
                   ),
+                  
                   const SizedBox(height: 24),
-
-                  // NEW "Remind I'm Online" setting
-                  _buildRemindOnlineCard(),
 
                   _buildSettingCard(
                     icon: Icons.volume_up_rounded,
@@ -377,7 +483,63 @@ class _SettingsPageState extends State<SettingsPage> {
                       _saveSetting('notif_screen_light', val);
                     },
                   ),
+                  
                   const SizedBox(height: 24),
+
+                  // Offline reminder setting
+                  _buildOfflineReminderCard(),
+
+                  const SizedBox(height: 24),
+
+                  // Social notifications info
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green[100]!),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.people_rounded,
+                          color: Colors.green[600],
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Social Features',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.green[800],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '• Get notified when friends come online\n• Let friends know you see them with "I see you" button\n• Quick offline toggle without opening the app',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.green[700],
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Classic notifications info
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
@@ -409,7 +571,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'These settings control how you receive notifications from your friends in MeWorld. You can customize sound, vibration, and screen lighting to match your preferences.',
+                                'These settings control sound, vibration, and screen lighting for all your MeWorld notifications including Morse signals and friend interactions.',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.teal[700],

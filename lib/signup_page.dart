@@ -82,7 +82,9 @@ class _SignupPageState extends State<SignupPage> {
       await prefs.setString('user_id', newUserDoc.id);
       await prefs.setString('user_name', username);
 
+      //if didnt work wrap with try and catch (navError)
       if (!mounted) return;
+      setState(() => _isLoading = false); // reset loader
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
