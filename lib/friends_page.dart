@@ -154,21 +154,27 @@ class _FriendsPageState extends State<FriendsPage> {
     if (code.isEmpty) return;
     if (_isSendingRequest) return;
 
-    if (code == widget.cachedVisibility[widget.currentUserId].toString()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text("You can't add yourself to MeWorld!"),
-          backgroundColor: Colors.orange[600],
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSendingRequest = true);
 
     try {
+      // Get the current user's MeCode to prevent self-add
+      final currentUserDoc = await users.doc(widget.currentUserId).get();
+      final data = currentUserDoc.data() as Map<String, dynamic>?;
+      final currentUserCode = (data?['meCode'] ?? '').toString();
+
+      if (code == currentUserCode) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("You can't add yourself to MeWorld!"),
+            backgroundColor: Colors.orange[600],
+          ),
+        );
+        return;
+      }
+
+      // Lookup the friend by their MeCode
       final query = await users
-          .where('friendCode', isEqualTo: code)
+          .where('meCode', isEqualTo: code) // ✅ fixed here
           .limit(1)
           .get();
 
@@ -196,6 +202,7 @@ class _FriendsPageState extends State<FriendsPage> {
         return;
       }
 
+      // Check if already friends
       final existingFriend = await users
           .doc(widget.currentUserId)
           .collection('friends')
@@ -211,6 +218,7 @@ class _FriendsPageState extends State<FriendsPage> {
         return;
       }
 
+      // Check if request already sent
       final requestDoc = await users
           .doc(friendId)
           .collection('friendRequests')
@@ -227,6 +235,7 @@ class _FriendsPageState extends State<FriendsPage> {
         return;
       }
 
+      // Send the request
       await users
           .doc(friendId)
           .collection('friendRequests')
@@ -254,7 +263,9 @@ class _FriendsPageState extends State<FriendsPage> {
         ),
       );
     } finally {
-      setState(() => _isSendingRequest = false);
+      if (mounted) {
+        setState(() => _isSendingRequest = false);
+      }
     }
   }
 
@@ -400,8 +411,10 @@ class _FriendsPageState extends State<FriendsPage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        FriendRequestsPage(currentUserId: widget.currentUserId, currentUserName: '',),
+                    builder: (_) => FriendRequestsPage(
+                      currentUserId: widget.currentUserId,
+                      currentUserName: '',
+                    ),
                   ),
                 );
               },

@@ -74,6 +74,7 @@ class _SignupPageState extends State<SignupPage> {
       // Create new user doc with username and password (plaintext here, hash recommended)
       final newUserDoc = await users.add({
         'username': username,
+        'name': username,
         'password': password,
         'createdAt': FieldValue.serverTimestamp(),
       });

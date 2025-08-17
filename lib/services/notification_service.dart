@@ -10,13 +10,13 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 class NotificationService {
   static Function? onToggleOffline;
   static Function? onFriendResponse;
-  
+
   static const int statusNotificationId = 0;
   static const int morseNotificationId = 1;
   static const int friendOnlineNotificationId = 2;
   static const int friendResponseNotificationId = 3;
   static const int offlineReminderNotificationId = 4;
-  
+
   // Timer for offline reminder functionality
   static Timer? _offlineReminderTimer;
   static String? _currentUserId;
@@ -33,19 +33,38 @@ class NotificationService {
     await flutterLocalNotificationsPlugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) async {
-        if (response.payload == 'TOGGLE_MEON') {
+        if (response.actionId == 'TOGGLE_MEON') {
           debugPrint("User tapped GO OFFLINE");
+          if (onToggleOffline != null) {
+            onToggleOffline!();
+          }
+        } else if (response.actionId?.startsWith('I_SEE_YOU_') == true) {
+          final friendId = response.actionId!.substring('I_SEE_YOU_'.length);
+          debugPrint("User tapped I SEE YOU for friend: $friendId");
+          if (onFriendResponse != null) {
+            onFriendResponse!(friendId);
+          }
+        } else if (response.actionId == 'REMIND_GO_OFFLINE') {
+          debugPrint("User tapped offline reminder");
+          if (onToggleOffline != null) {
+            onToggleOffline!();
+          }
+          // 🔹 Fallback for tapping the notification body itself
+        } else if (response.payload == 'TOGGLE_MEON') {
+          debugPrint("User tapped GO OFFLINE (notification body)");
           if (onToggleOffline != null) {
             onToggleOffline!();
           }
         } else if (response.payload?.startsWith('I_SEE_YOU_') == true) {
           final friendId = response.payload!.substring('I_SEE_YOU_'.length);
-          debugPrint("User tapped I SEE YOU for friend: $friendId");
+          debugPrint(
+            "User tapped I SEE YOU for friend: $friendId (notification body)",
+          );
           if (onFriendResponse != null) {
             onFriendResponse!(friendId);
           }
         } else if (response.payload == 'REMIND_GO_OFFLINE') {
-          debugPrint("User tapped offline reminder");
+          debugPrint("User tapped offline reminder (notification body)");
           if (onToggleOffline != null) {
             onToggleOffline!();
           }
@@ -85,7 +104,7 @@ class NotificationService {
   static Future<void> _scheduleOfflineReminder(int minutes) async {
     // Cancel existing timer
     _offlineReminderTimer?.cancel();
-    
+
     if (minutes <= 0) {
       _isReminderActive = false;
       return;
@@ -93,9 +112,9 @@ class NotificationService {
 
     _isReminderActive = true;
     final duration = Duration(minutes: minutes);
-    
+
     debugPrint('Scheduling offline reminder after $minutes minutes');
-    
+
     _offlineReminderTimer = Timer(duration, () async {
       await _showOfflineReminderNotification();
     });
@@ -109,29 +128,33 @@ class NotificationService {
       // Check if user preferences allow notifications
       final prefs = await SharedPreferences.getInstance();
       final soundEnabled = prefs.getBool('notif_sound_$_currentUserId') ?? true;
-      final vibrationEnabled = prefs.getBool('notif_vibration_$_currentUserId') ?? true;
-      final screenLightEnabled = prefs.getBool('notif_screen_light_$_currentUserId') ?? true;
+      final vibrationEnabled =
+          prefs.getBool('notif_vibration_$_currentUserId') ?? true;
+      final screenLightEnabled =
+          prefs.getBool('notif_screen_light_$_currentUserId') ?? true;
 
-      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'offline_reminder_channel',
-        'Offline Reminders',
-        channelDescription: 'Reminders to go offline after being online for a while',
-        importance: Importance.high,
-        priority: Priority.high,
-        playSound: soundEnabled,
-        enableVibration: vibrationEnabled,
-        enableLights: screenLightEnabled,
-        vibrationPattern: vibrationEnabled 
-            ? Int64List.fromList([0, 400, 400, 400]) 
-            : Int64List.fromList([]),
-        actions: <AndroidNotificationAction>[
-          AndroidNotificationAction(
-            'REMIND_GO_OFFLINE',
-            'Go MEOFF',
-            showsUserInterface: true,
-          ),
-        ],
-      );
+      final AndroidNotificationDetails androidDetails =
+          AndroidNotificationDetails(
+            'offline_reminder_channel',
+            'Offline Reminders',
+            channelDescription:
+                'Reminders to go offline after being online for a while',
+            importance: Importance.high,
+            priority: Priority.high,
+            playSound: soundEnabled,
+            enableVibration: vibrationEnabled,
+            enableLights: screenLightEnabled,
+            vibrationPattern: vibrationEnabled
+                ? Int64List.fromList([0, 400, 400, 400])
+                : Int64List.fromList([]),
+            actions: <AndroidNotificationAction>[
+              AndroidNotificationAction(
+                'REMIND_GO_OFFLINE',
+                'Go MEOFF',
+                showsUserInterface: true,
+              ),
+            ],
+          );
 
       await flutterLocalNotificationsPlugin.show(
         offlineReminderNotificationId,
@@ -150,7 +173,7 @@ class NotificationService {
   // Update offline reminder interval
   static Future<void> updateOfflineReminderInterval(int minutes) async {
     if (_currentUserId == null) return;
-    
+
     debugPrint('Updating offline reminder interval to $minutes minutes');
     await _scheduleOfflineReminder(minutes);
   }
@@ -159,7 +182,10 @@ class NotificationService {
   static bool get isOfflineReminderActive => _isReminderActive;
 
   // Show persistent notification when user is MEON (online)
-  static Future<void> showMeonStatusNotification(bool isOn, {String? userId}) async {
+  static Future<void> showMeonStatusNotification(
+    bool isOn, {
+    String? userId,
+  }) async {
     if (!isOn) {
       await flutterLocalNotificationsPlugin.cancel(statusNotificationId);
       return;
@@ -168,7 +194,7 @@ class NotificationService {
     // Get user notification preferences
     bool soundEnabled = true;
     bool vibrationEnabled = true;
-    
+
     if (userId != null) {
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -187,7 +213,7 @@ class NotificationService {
       priority: Priority.defaultPriority,
       playSound: soundEnabled,
       enableVibration: vibrationEnabled,
-      vibrationPattern: vibrationEnabled 
+      vibrationPattern: vibrationEnabled
           ? Int64List.fromList([0, 300, 300, 300])
           : Int64List.fromList([]),
       ongoing: true,
@@ -212,46 +238,48 @@ class NotificationService {
 
   // Show notification when a friend comes online
   static Future<void> showFriendOnlineNotification(
-    String friendName, 
-    String friendId, 
-    {String? userId}
-  ) async {
+    String friendName,
+    String friendId, {
+    String? userId,
+  }) async {
     // Get user notification preferences
     bool soundEnabled = true;
     bool vibrationEnabled = true;
     bool screenLightEnabled = true;
-    
+
     if (userId != null) {
       try {
         final prefs = await SharedPreferences.getInstance();
         soundEnabled = prefs.getBool('notif_sound_$userId') ?? true;
         vibrationEnabled = prefs.getBool('notif_vibration_$userId') ?? true;
-        screenLightEnabled = prefs.getBool('notif_screen_light_$userId') ?? true;
+        screenLightEnabled =
+            prefs.getBool('notif_screen_light_$userId') ?? true;
       } catch (e) {
         debugPrint('Failed to load notification preferences: $e');
       }
     }
 
-    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'friend_online_channel',
-      'Friends Online',
-      channelDescription: 'Notifications when friends come online',
-      importance: Importance.high,
-      priority: Priority.high,
-      playSound: soundEnabled,
-      enableVibration: vibrationEnabled,
-      enableLights: screenLightEnabled,
-      vibrationPattern: vibrationEnabled 
-          ? Int64List.fromList([0, 500, 300, 500, 300, 500])
-          : Int64List.fromList([]),
-      actions: <AndroidNotificationAction>[
-        AndroidNotificationAction(
-          'I_SEE_YOU_$friendId',
-          '👋 I see you',
-          showsUserInterface: false,
-        ),
-      ],
-    );
+    final AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+          'friend_online_channel',
+          'Friends Online',
+          channelDescription: 'Notifications when friends come online',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: soundEnabled,
+          enableVibration: vibrationEnabled,
+          enableLights: screenLightEnabled,
+          vibrationPattern: vibrationEnabled
+              ? Int64List.fromList([0, 500, 300, 500, 300, 500])
+              : Int64List.fromList([]),
+          actions: <AndroidNotificationAction>[
+            AndroidNotificationAction(
+              'I_SEE_YOU_$friendId',
+              '👋 I see you',
+              showsUserInterface: false,
+            ),
+          ],
+        );
 
     await flutterLocalNotificationsPlugin.show(
       friendOnlineNotificationId,
@@ -264,38 +292,40 @@ class NotificationService {
 
   // Show notification when friend responds with "I see you"
   static Future<void> showFriendResponseNotification(
-    String friendName, 
-    {String? userId}
-  ) async {
+    String friendName, {
+    String? userId,
+  }) async {
     // Get user notification preferences
     bool soundEnabled = true;
     bool vibrationEnabled = true;
     bool screenLightEnabled = true;
-    
+
     if (userId != null) {
       try {
         final prefs = await SharedPreferences.getInstance();
         soundEnabled = prefs.getBool('notif_sound_$userId') ?? true;
         vibrationEnabled = prefs.getBool('notif_vibration_$userId') ?? true;
-        screenLightEnabled = prefs.getBool('notif_screen_light_$userId') ?? true;
+        screenLightEnabled =
+            prefs.getBool('notif_screen_light_$userId') ?? true;
       } catch (e) {
         debugPrint('Failed to load notification preferences: $e');
       }
     }
 
-    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'friend_response_channel',
-      'Friend Responses',
-      channelDescription: 'When friends acknowledge seeing you online',
-      importance: Importance.high,
-      priority: Priority.high,
-      playSound: soundEnabled,
-      enableVibration: vibrationEnabled,
-      enableLights: screenLightEnabled,
-      vibrationPattern: vibrationEnabled 
-          ? Int64List.fromList([0, 200, 200, 200, 200, 200])
-          : Int64List.fromList([]),
-    );
+    final AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+          'friend_response_channel',
+          'Friend Responses',
+          channelDescription: 'When friends acknowledge seeing you online',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: soundEnabled,
+          enableVibration: vibrationEnabled,
+          enableLights: screenLightEnabled,
+          vibrationPattern: vibrationEnabled
+              ? Int64List.fromList([0, 200, 200, 200, 200, 200])
+              : Int64List.fromList([]),
+        );
 
     await flutterLocalNotificationsPlugin.show(
       friendResponseNotificationId,
@@ -307,44 +337,46 @@ class NotificationService {
 
   // Keep morse notifications as they were
   static Future<void> showMorseNotification(
-    String senderName, 
-    String signal, 
-    {String? userId}
-  ) async {
+    String senderName,
+    String signal, {
+    String? userId,
+  }) async {
     // Get user notification preferences
     bool soundEnabled = true;
     bool vibrationEnabled = true;
     bool screenLightEnabled = true;
-    
+
     if (userId != null) {
       try {
         final prefs = await SharedPreferences.getInstance();
         soundEnabled = prefs.getBool('notif_sound_$userId') ?? true;
         vibrationEnabled = prefs.getBool('notif_vibration_$userId') ?? true;
-        screenLightEnabled = prefs.getBool('notif_screen_light_$userId') ?? true;
+        screenLightEnabled =
+            prefs.getBool('notif_screen_light_$userId') ?? true;
       } catch (e) {
         debugPrint('Failed to load notification preferences: $e');
       }
     }
 
-    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'morse_signals_channel',
-      'Morse Signals',
-      channelDescription: 'Incoming Morse code signals',
-      importance: Importance.high,
-      priority: Priority.high,
-      playSound: soundEnabled,
-      enableVibration: vibrationEnabled,
-      enableLights: screenLightEnabled,
-      vibrationPattern: vibrationEnabled 
-          ? Int64List.fromList(const [0, 250, 250, 250, 250, 250])
-          : Int64List.fromList([]),
-      styleInformation: BigTextStyleInformation(
-        'Signal: $signal',
-        contentTitle: 'Morse from $senderName',
-        summaryText: 'New Morse signal received',
-      ),
-    );
+    final AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+          'morse_signals_channel',
+          'Morse Signals',
+          channelDescription: 'Incoming Morse code signals',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: soundEnabled,
+          enableVibration: vibrationEnabled,
+          enableLights: screenLightEnabled,
+          vibrationPattern: vibrationEnabled
+              ? Int64List.fromList(const [0, 250, 250, 250, 250, 250])
+              : Int64List.fromList([]),
+          styleInformation: BigTextStyleInformation(
+            'Signal: $signal',
+            contentTitle: 'Morse from $senderName',
+            summaryText: 'New Morse signal received',
+          ),
+        );
 
     await flutterLocalNotificationsPlugin.show(
       morseNotificationId,

@@ -33,7 +33,8 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
         ? widget.currentUserId.substring(0, 3)
         : widget.currentUserId;
     final doc = await users.doc(widget.currentUserId).get();
-    final code = doc.data()?['meCode'];
+    final data = doc.data() as Map<String, dynamic>?;
+    final code = data?['meCode'] as String?;
     if (code != null && code is String) return code;
     // Generate and save if not exist
     final newCode = (namePart + idPart).toUpperCase();
@@ -43,10 +44,15 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
     return newCode;
   }
 
+  bool _isCopying = false;
   Future<void> _copyMeCode() async {
+    if (_isCopying) return;
+    _isCopying = true;
+
     final code = await _getMeCode();
     await Clipboard.setData(ClipboardData(text: code));
     if (!mounted) return;
+    
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -57,6 +63,8 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
+    await Future.delayed(Duration(seconds: 1));
+    _isCopying = false;
   }
 
   Future<void> _acceptRequest(String fromUserId, String fromName) async {
@@ -77,6 +85,13 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
           .collection('friendRequests')
           .doc(fromUserId)
           .delete();
+
+      // Add friend request back to the requester (if you want them to know)
+      await users
+          .doc(fromUserId)
+          .collection('friendRequests')
+          .doc(widget.currentUserId)
+          .set({'name': widget.currentUserName, 'status': 'pending'});
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -175,19 +190,22 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
               .where('status', isEqualTo: 'pending')
               .snapshots(),
           builder: (context, snapshot) {
-            if (snapshot.hasError || _loadingError)
+            if (snapshot.hasError || _loadingError) {
               return _ErrorWidget(
                 onRetry: () => setState(() => _loadingError = false),
               );
-            if (snapshot.connectionState == ConnectionState.waiting)
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
               return _LoadingWidget();
+            }
 
             final requests = snapshot.data?.docs ?? [];
-            if (requests.isEmpty)
+            if (requests.isEmpty) {
               return _EmptyWidget(
                 userName: widget.currentUserName,
                 onShareMeCode: _copyMeCode,
               );
+            }
 
             return SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -205,7 +223,9 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
                     itemBuilder: (context, index) {
                       final req = requests[index];
                       final fromId = req.id;
-                      final fromName = req['name'] ?? 'Unknown';
+                      final fromName =
+                          (req.data() as Map<String, dynamic>?)?['name'] ??
+                          'Unknown';
                       final isLoading = _loadingRequests.contains(fromId);
 
                       return _RequestCard(
@@ -225,10 +245,6 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
       ),
     );
   }
-}
-
-extension on Object? {
-  operator [](String other) {}
 }
 
 /// =======================
