@@ -17,8 +17,11 @@ class MorseHistoryItem {
 
 class AppWidgets {
   // ==================== CONTAINER DECORATIONS ====================
-  
-  static BoxDecoration historyContainerDecoration({required Color backgroundColor, required Color borderColor}) {
+
+  static BoxDecoration historyContainerDecoration({
+    required Color backgroundColor,
+    required Color borderColor,
+  }) {
     return BoxDecoration(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(8),
@@ -26,7 +29,10 @@ class AppWidgets {
     );
   }
 
-  static BoxDecoration signalItemDecoration({required Color backgroundColor, required Color borderColor}) {
+  static BoxDecoration signalItemDecoration({
+    required Color backgroundColor,
+    required Color borderColor,
+  }) {
     return BoxDecoration(
       color: backgroundColor,
       borderRadius: BorderRadius.circular(12),
@@ -34,22 +40,20 @@ class AppWidgets {
     );
   }
 
-  static BoxDecoration mainContainerDecoration({required Color backgroundColor}) {
+  static BoxDecoration mainContainerDecoration({
+    required Color backgroundColor,
+  }) {
     return BoxDecoration(
       color: backgroundColor,
       borderRadius: const BorderRadius.all(Radius.circular(25)),
       boxShadow: const [
-        BoxShadow(
-          color: Colors.black12,
-          blurRadius: 10,
-          offset: Offset(0, 5),
-        ),
+        BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5)),
       ],
     );
   }
 
   // ==================== HISTORY SECTION HEADER ====================
-  
+
   static Widget historyHeader({
     required IconData icon,
     required String title,
@@ -72,8 +76,11 @@ class AppWidgets {
   }
 
   // ==================== EMPTY HISTORY MESSAGE ====================
-  
-  static Widget emptyHistoryMessage({required String text, required Color color}) {
+
+  static Widget emptyHistoryMessage({
+    required String text,
+    required Color color,
+  }) {
     return Text(
       text,
       style: TextStyle(fontSize: 12, color: color, fontStyle: FontStyle.italic),
@@ -81,7 +88,7 @@ class AppWidgets {
   }
 
   // ==================== SIGNAL ITEM WIDGETS ====================
-  
+
   static Widget sentSignalItem({
     required MorseHistoryItem item,
     required VoidCallback onTap,
@@ -155,9 +162,10 @@ class AppWidgets {
   }
 
   // ==================== HISTORY CONTAINERS ====================
-  
+
   static Widget sentHistoryContainer({
     required List<MorseHistoryItem> sentHistory,
+    required String receiverName,
     required Function(int) onDeleteSent,
   }) {
     return Container(
@@ -172,7 +180,7 @@ class AppWidgets {
         children: [
           historyHeader(
             icon: Icons.send,
-            title: 'Sent:',
+            title: 'Sent to: $receiverName',
             color: Colors.teal[700]!,
           ),
           const SizedBox(height: 4),
@@ -239,7 +247,7 @@ class AppWidgets {
   }
 
   // ==================== PROGRESS INDICATOR ====================
-  
+
   static Widget progressIndicator({
     required double progress,
     required bool isHolding,
@@ -256,7 +264,8 @@ class AppWidgets {
             minHeight: 8,
             backgroundColor: backgroundColor ?? Colors.grey[300],
             valueColor: AlwaysStoppedAnimation<Color>(
-              activeColor ?? (isHolding ? Colors.blue[600]! : Colors.blue[400]!),
+              activeColor ??
+                  (isHolding ? Colors.blue[600]! : Colors.blue[400]!),
             ),
           ),
           // Tick markers at 1s and 3s
@@ -277,7 +286,7 @@ class AppWidgets {
   }
 
   // ==================== CUSTOM CHECKBOX ====================
-  
+
   static Widget customCheckbox({
     required bool isChecked,
     required VoidCallback onTap,
@@ -290,9 +299,11 @@ class AppWidgets {
         width: 24,
         height: 24,
         decoration: BoxDecoration(
-          color: isChecked ? (checkedColor ?? Colors.blue[700]) : Colors.transparent,
+          color: isChecked
+              ? (checkedColor ?? Colors.blue[700])
+              : Colors.transparent,
           border: Border.all(
-            color: isChecked 
+            color: isChecked
                 ? (checkedColor ?? Colors.blue[700]!)
                 : (uncheckedBorderColor ?? Colors.grey[800]!),
             width: 2,
@@ -320,7 +331,7 @@ class AppWidgets {
   }
 
   // ==================== MAIN CONTAINER WITH CHECKBOX ====================
-  
+
   static Widget mainContainerWithCheckbox({
     required Widget child,
     required Color backgroundColor,
@@ -353,7 +364,7 @@ class AppWidgets {
   }
 
   // ==================== MAIN BUTTON ====================
-  
+
   static Widget mainButton({
     required String text,
     required VoidCallback? onPressed,
@@ -369,9 +380,7 @@ class AppWidgets {
         backgroundColor: backgroundColor,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(30),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
         textStyle: const TextStyle(fontSize: 20),
         elevation: isElevated ? 8 : 4,
       ),
@@ -392,7 +401,7 @@ class AppWidgets {
   }
 
   // ==================== APP BAR ICON BUTTON ====================
-  
+
   static Widget appBarIconButton({
     required IconData icon,
     required VoidCallback onPressed,
@@ -416,45 +425,14 @@ class AppWidgets {
   }) {
     return TextButton(
       onPressed: onPressed,
-      child: Text(
-        text,
-        style: TextStyle(color: textColor ?? Colors.grey[600]),
-      ),
+      child: Text(text, style: TextStyle(color: textColor ?? Colors.grey[600])),
     );
   }
 
-  // ==================== MORSE RECEIVER DISPLAY ====================
-  
-  static Widget morseReceiverDisplay({
-    required String receiverName,
-    required VoidCallback onClear,
-  }) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Signaling: $receiverName',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.teal[700],
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: onClear,
-          child: Icon(
-            Icons.clear,
-            size: 18,
-            color: Colors.red[400],
-          ),
-        ),
-      ],
-    );
-  }
+
 
   // ==================== FIXED HEIGHT ANIMATED CONTAINER ====================
-  
+
   static Widget fixedHeightAnimatedContainer({
     required Widget child,
     required bool showContent,
@@ -478,5 +456,4 @@ class AppWidgets {
   // ==================== ------------------------------- ====================
   // ==================== ------------------------------- ====================
   // ==================== ------------------------------- ====================
-
 }
