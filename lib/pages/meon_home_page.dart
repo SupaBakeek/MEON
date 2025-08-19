@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:meon/appwidgets.dart';
+import 'package:meon/widgets/appwidgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'services/notification_service.dart';
+import '../services/notification_service.dart';
 import 'friends_page.dart';
 import 'settings_page.dart';
 
@@ -125,7 +125,11 @@ class _MeonHomePageState extends State<MeonHomePage>
 
   void _setupNotificationCallbacks() {
     NotificationService.onToggleOffline ??= () async {
-      if (mounted) await toggleStatus();
+      debugPrint("onToggleOffline callback triggered"); // Debug log
+      if (mounted) {
+        await toggleStatus();
+        debugPrint("Status toggled to: ${isMeOn ? 'MEON' : 'MEOFF'}"); // Debug log
+      }
     };
     NotificationService.onFriendResponse ??= _sendFriendResponse;
   }

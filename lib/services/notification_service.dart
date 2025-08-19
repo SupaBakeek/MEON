@@ -24,54 +24,46 @@ class NotificationService {
 
   static Future<void> init() async {
     const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@drawable/ic_notification');
 
     const InitializationSettings initSettings = InitializationSettings(
       android: androidSettings,
     );
 
+    debugPrint('Initializing flutter_local_notifications...');
     await flutterLocalNotificationsPlugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) async {
+        debugPrint('Notification response received: actionId=${response.actionId}, payload=${response.payload}');
         if (response.actionId == 'TOGGLE_MEON') {
           debugPrint("User tapped GO OFFLINE");
           if (onToggleOffline != null) {
             onToggleOffline!();
+          } else {
+            debugPrint("onToggleOffline callback is null");
           }
         } else if (response.actionId?.startsWith('I_SEE_YOU_') == true) {
           final friendId = response.actionId!.substring('I_SEE_YOU_'.length);
           debugPrint("User tapped I SEE YOU for friend: $friendId");
           if (onFriendResponse != null) {
             onFriendResponse!(friendId);
+          } else {
+            debugPrint("onFriendResponse callback is null");
           }
         } else if (response.actionId == 'REMIND_GO_OFFLINE') {
           debugPrint("User tapped offline reminder");
           if (onToggleOffline != null) {
             onToggleOffline!();
+          } else {
+            debugPrint("onToggleOffline callback is null");
           }
-          // 🔹 Fallback for tapping the notification body itself
-        } else if (response.payload == 'TOGGLE_MEON') {
-          debugPrint("User tapped GO OFFLINE (notification body)");
-          if (onToggleOffline != null) {
-            onToggleOffline!();
-          }
-        } else if (response.payload?.startsWith('I_SEE_YOU_') == true) {
-          final friendId = response.payload!.substring('I_SEE_YOU_'.length);
-          debugPrint(
-            "User tapped I SEE YOU for friend: $friendId (notification body)",
-          );
-          if (onFriendResponse != null) {
-            onFriendResponse!(friendId);
-          }
-        } else if (response.payload == 'REMIND_GO_OFFLINE') {
-          debugPrint("User tapped offline reminder (notification body)");
-          if (onToggleOffline != null) {
-            onToggleOffline!();
-          }
+        } else {
+          debugPrint("Unhandled notification actionId or payload");
         }
       },
       onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
+    debugPrint('flutter_local_notifications initialized successfully.');
   }
 
   @pragma('vm:entry-point')
@@ -93,6 +85,10 @@ class NotificationService {
 
   // Stop offline reminder system
   static Future<void> stopOfflineReminder() async {
+    if (!_isReminderActive) {
+    debugPrint('Offline reminder is already stopped');
+    return;
+  }
     _offlineReminderTimer?.cancel();
     _offlineReminderTimer = null;
     _isReminderActive = false;

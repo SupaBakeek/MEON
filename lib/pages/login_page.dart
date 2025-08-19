@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:meon/meon_home_page.dart';
-import 'package:meon/onboarding_page.dart';
-import 'package:meon/signup_page.dart';
+import 'package:meon/pages/meon_home_page.dart';
+import 'package:meon/pages/onboarding_page.dart';
+import 'package:meon/pages/signup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
