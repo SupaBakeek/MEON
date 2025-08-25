@@ -947,11 +947,10 @@ class _MeonHomePageState extends State<MeonHomePage>
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: _buildAppBar(),
-      body: Container(
-        margin: const EdgeInsets.all(20),
-        child: Center(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               _buildMainContainer(),
               const SizedBox(height: 20),
@@ -1022,9 +1021,22 @@ class _MeonHomePageState extends State<MeonHomePage>
             backgroundColor: morseMode ? Colors.blue[700]! : _primaryColor,
             isElevated: _isHolding,
             onPressed: morseMode ? null : toggleStatus,
-            onTapDown: _onPressStart,
-            onTapUp: _onPressEnd,
-            onTapCancel: _onPressCancel,
+            isEnabled: true,
+            onTapDown: morseMode && morseReceiverId != null ? () {
+              setState(() {
+                _onPressStart();
+              });
+            } : null,
+            onTapUp: morseMode && morseReceiverId != null ? () {
+              setState(() {
+                _onPressEnd();
+              });
+            } : null,
+            onTapCancel: morseMode && morseReceiverId != null ? () {
+              setState(() {
+                _onPressCancel();
+              });
+            } : null,
           ),
         ],
       ),
@@ -1056,51 +1068,63 @@ class _MeonHomePageState extends State<MeonHomePage>
   }
 
   Widget _buildHistorySection() {
-    return Column(
-      children: [
-        if (_sentHistory.isNotEmpty && morseReceiverName != null)
-          AppWidgets.sentHistoryContainer(
-            sentHistory: _sentHistory,
-            onDeleteSent: _deleteSentSignal,
-            receiverName: morseReceiverName!,
-          ),
-        if (_receivedHistory.isNotEmpty) ...[
-          if (_sentHistory.isNotEmpty && morseReceiverName != null) const SizedBox(height: 8),
-          AppWidgets.receivedHistoryContainer(
-            receivedHistory: _receivedHistory,
-            onDeleteReceived: _deleteReceivedSignal,
-          ),
-        ],
-      ],
+    return Expanded(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_sentHistory.isNotEmpty && morseReceiverName != null)
+              AppWidgets.sentHistoryContainer(
+                sentHistory: _sentHistory,
+                onDeleteSent: _deleteSentSignal,
+                receiverName: morseReceiverName!,
+              ),
+            if (_receivedHistory.isNotEmpty) ...[
+              if (_sentHistory.isNotEmpty && morseReceiverName != null) const SizedBox(height: 8),
+              AppWidgets.receivedHistoryContainer(
+                receivedHistory: _receivedHistory,
+                onDeleteReceived: _deleteReceivedSignal,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildMorseStatusSection() {
     if (morseReceiverName == null) {
       return AppWidgets.textButton(
-      text: 'Select a friend first',
-      onPressed: _navigateToFriends,
+        text: 'Select a friend first',
+        onPressed: _navigateToFriends,
       );
     } else {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            lastSignal,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Colors.grey[800]),
-          ),
-          const SizedBox(width: 8),
-          if (morseMode) 
-          GestureDetector(
-            onTap: _clearMorseReceiver,
-            child: Icon(
-              Icons.clear,
-              size: 16,
-              color: Colors.red[400],
+      return Container(
+        constraints: const BoxConstraints(maxWidth: 300),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                lastSignal,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+              ),
             ),
-          ),
-      ],
+            const SizedBox(width: 8),
+            if (morseMode) 
+            GestureDetector(
+              onTap: _clearMorseReceiver,
+              child: Icon(
+                Icons.clear,
+                size: 16,
+                color: Colors.red[400],
+              ),
+            ),
+          ],
+        ),
       );
     }
   }

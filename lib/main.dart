@@ -2,21 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
-import 'package:meon/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
+import 'services/notification_service.dart';
 import 'package:meon/pages/onboarding_page.dart';
 import 'package:meon/pages/login_page.dart';
 import 'package:meon/pages/meon_home_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase
   if (defaultTargetPlatform == TargetPlatform.android) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.android,
     );
   } else {
     await Firebase.initializeApp();
+  }
+
+  // Initialize NotificationService
+  try {
+    await NotificationService.init();
+    debugPrint('NotificationService initialized successfully');
+  } catch (e) {
+    debugPrint('Error initializing NotificationService: $e');
   }
 
   runApp(const MeonApp());

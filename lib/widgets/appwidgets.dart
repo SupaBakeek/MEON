@@ -370,31 +370,56 @@ class AppWidgets {
     required VoidCallback? onPressed,
     required Color backgroundColor,
     bool isElevated = false,
+    bool isEnabled = true,
     VoidCallback? onTapDown,
     VoidCallback? onTapUp,
     VoidCallback? onTapCancel,
   }) {
-    final button = ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: backgroundColor,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        textStyle: const TextStyle(fontSize: 20),
-        elevation: isElevated ? 8 : 4,
-      ),
-      child: Text(text),
-    );
-
-    if (onTapDown != null || onTapUp != null || onTapCancel != null) {
-      return GestureDetector(
+    final bool hasGestureHandlers = onTapDown != null || onTapUp != null || onTapCancel != null;
+    final bool isActuallyEnabled = isEnabled && (onPressed != null || hasGestureHandlers);
+    
+    Widget button = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
         onTapDown: onTapDown != null ? (_) => onTapDown() : null,
         onTapUp: onTapUp != null ? (_) => onTapUp() : null,
         onTapCancel: onTapCancel,
-        behavior: HitTestBehavior.opaque,
-        child: button,
-      );
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            color: isEnabled ? backgroundColor : Colors.grey[400],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: isElevated ? 8 : 4,
+                offset: Offset(0, isElevated ? 4 : 2),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: hasGestureHandlers ? null : onPressed,
+              borderRadius: BorderRadius.circular(30),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                child: Text(
+                  text,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (!isActuallyEnabled) {
+      button = Opacity(opacity: 0.7, child: button);
     }
 
     return button;
