@@ -4,10 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
-import 'services/notification_service.dart';
 import 'package:meon/pages/onboarding_page.dart';
 import 'package:meon/pages/login_page.dart';
 import 'package:meon/pages/meon_home_page.dart';
+import 'package:meon/services/notification_service.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -6,15 +6,15 @@ plugins {
 
 android {
     namespace = "com.example.meon"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.example.meon"
         minSdk = 23
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        targetSdk = 33
+        versionCode = 1
+        versionName = "1.0"
     }
 
     compileOptions {

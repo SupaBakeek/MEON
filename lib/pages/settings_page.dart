@@ -43,22 +43,26 @@ class _SettingsPageState extends State<SettingsPage> {
       final doc = await _firestore.collection('users').doc(widget.userId).get();
       final data = doc.data();
 
-      setState(() {
-        _soundEnabled = data?['notifSound'] ?? sound ?? true;
-        _vibrationEnabled = data?['notifVibration'] ?? vibration ?? true;
-        _screenLightEnabled = data?['notifScreenLight'] ?? screenLight ?? true;
-        _offlineReminderMinutes = data?['offlineReminderMinutes'] ?? offlineReminderMinutes ?? 5;
-        _offlineReminderEnabled = data?['offlineReminderEnabled'] ?? offlineReminderOn ?? true;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _soundEnabled = data?['notifSound'] ?? sound ?? true;
+          _vibrationEnabled = data?['notifVibration'] ?? vibration ?? true;
+          _screenLightEnabled = data?['notifScreenLight'] ?? screenLight ?? true;
+          _offlineReminderMinutes = data?['offlineReminderMinutes'] ?? offlineReminderMinutes ?? 5;
+          _offlineReminderEnabled = data?['offlineReminderEnabled'] ?? offlineReminderOn ?? true;
+          _loading = false;
+        });
+      }
     } catch (e) {
       debugPrint('Failed to load settings: $e');
-      setState(() {
-        _loading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load settings')),
-      );
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to load settings')),
+        );
+      }
     }
   }
 
@@ -86,22 +90,15 @@ class _SettingsPageState extends State<SettingsPage> {
         SetOptions(merge: true),
       );
 
-      setState(() {
-        _offlineReminderEnabled = enabled;
-      });
+      if (mounted) {
+        setState(() {
+          _offlineReminderEnabled = enabled;
+        });
 
-      if (enabled) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Offline reminders enabled'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Offline reminders disabled'),
-            backgroundColor: Colors.grey[600],
+            content: Text(enabled ? 'Offline reminders enabled' : 'Offline reminders disabled'),
+            backgroundColor: enabled ? Colors.orange : Colors.grey[600],
           ),
         );
       }
@@ -110,21 +107,12 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // FIXED: Complete _saveSetting method
   Future<void> _saveSetting(String key, bool value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('${key}_${widget.userId}', value);
 
-      String firestoreKey = '';
-      if (key == 'notif_sound') {
-        firestoreKey = 'notifSound';
-      } else if (key == 'notif_vibration') {
-        firestoreKey = 'notifVibration';
-      } else if (key == 'notif_screen_light') {
-        firestoreKey = 'notifScreenLight';
-      }
-
+      final firestoreKey = _getFirestoreKey(key);
       if (firestoreKey.isNotEmpty) {
         await _firestore.collection('users').doc(widget.userId).set(
           {firestoreKey: value},
@@ -133,9 +121,24 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } catch (e) {
       debugPrint('Failed to save $key: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save setting')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to save setting')),
+        );
+      }
+    }
+  }
+
+  String _getFirestoreKey(String key) {
+    switch (key) {
+      case 'notif_sound':
+        return 'notifSound';
+      case 'notif_vibration':
+        return 'notifVibration';
+      case 'notif_screen_light':
+        return 'notifScreenLight';
+      default:
+        return '';
     }
   }
 
@@ -147,6 +150,8 @@ class _SettingsPageState extends State<SettingsPage> {
     required ValueChanged<bool> onChanged,
     Color? iconColor,
   }) {
+    final color = iconColor ?? Colors.teal[600]!;
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -167,12 +172,12 @@ class _SettingsPageState extends State<SettingsPage> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: (iconColor ?? Colors.teal).withOpacity(0.1),
+              color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
               icon,
-              color: iconColor ?? Colors.teal[600],
+              color: color,
               size: 22,
             ),
           ),
@@ -203,10 +208,10 @@ class _SettingsPageState extends State<SettingsPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: iconColor ?? Colors.teal,
+            activeColor: color,
             inactiveThumbColor: Colors.grey[300],
             inactiveTrackColor: Colors.grey[200],
-            trackOutlineColor: WidgetStateProperty.all(Colors.white.withOpacity(0.4)),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
           ),
         ],
       ),
@@ -214,6 +219,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildOfflineReminderCard() {
+    final isEnabled = _offlineReminderEnabled;
+    final iconColor = isEnabled ? Colors.orange[600]! : Colors.grey[400]!;
+    final containerColor = isEnabled ? Colors.orange[50]! : Colors.grey[100]!;
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -237,16 +246,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: _offlineReminderEnabled 
-                      ? Colors.orange[50] 
-                      : Colors.grey[100],
+                  color: containerColor,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
                   Icons.schedule_rounded,
-                  color: _offlineReminderEnabled 
-                      ? Colors.orange[600] 
-                      : Colors.grey[400],
+                  color: iconColor,
                   size: 22,
                 ),
               ),
@@ -265,7 +270,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _offlineReminderEnabled 
+                      isEnabled 
                           ? 'Get reminded to go offline after $_offlineReminderMinutes min online'
                           : 'Offline reminders are disabled',
                       style: TextStyle(
@@ -277,17 +282,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               Switch(
-                value: _offlineReminderEnabled,
+                value: isEnabled,
                 onChanged: _toggleOfflineReminder,
                 activeColor: Colors.orange,
                 inactiveThumbColor: Colors.grey[300],
                 inactiveTrackColor: Colors.grey[200],
+                trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
               ),
             ],
           ),
           
           // Interval selector (only show when enabled)
-          if (_offlineReminderEnabled) ...[
+          if (isEnabled) ...[
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -353,12 +359,66 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required String content,
+    required Color color,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            color: color,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: color.withOpacity(0.9),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  content,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: color.withOpacity(0.8),
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final tealColor = Colors.teal;
+
     return Scaffold(
-      backgroundColor: Colors.teal[50],
+      backgroundColor: tealColor[50],
       appBar: AppBar(
-        backgroundColor: Colors.teal[50],
+        backgroundColor: tealColor[50],
         elevation: 0,
         leading: IconButton(
           icon: Icon(
@@ -372,7 +432,7 @@ class _SettingsPageState extends State<SettingsPage> {
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w600,
-            color: Colors.teal[800],
+            color: tealColor[800],
           ),
         ),
         centerTitle: true,
@@ -382,7 +442,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(color: Colors.teal),
+                  CircularProgressIndicator(color: tealColor),
                   const SizedBox(height: 16),
                   Text(
                     'Loading your MeSettings...',
@@ -419,13 +479,13 @@ class _SettingsPageState extends State<SettingsPage> {
                           width: 60,
                           height: 60,
                           decoration: BoxDecoration(
-                            color: Colors.teal[100],
+                            color: tealColor[100],
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Icon(
                             Icons.tune_rounded,
                             size: 30,
-                            color: Colors.teal[700],
+                            color: tealColor[700],
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -492,97 +552,21 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 24),
 
                   // Social notifications info
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green[100]!),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.people_rounded,
-                          color: Colors.green[600],
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Social Features',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.green[800],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '• Get notified when friends come online\n• Let friends know you see them with "I see you" button\n• Quick offline toggle without opening the app',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.green[700],
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                  _buildInfoCard(
+                    icon: Icons.people_rounded,
+                    title: 'Social Features',
+                    content: '• Get notified when friends come online\n• Let friends know you see them with "I see you" button\n• Quick offline toggle without opening the app',
+                    color: Colors.green,
                   ),
 
                   const SizedBox(height: 16),
 
                   // Classic notifications info
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.teal[100],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.teal[100]!),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          color: Colors.teal[600],
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'About MeNotifications',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.teal[800],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'These settings control sound, vibration, and screen lighting for all your MeWorld notifications including Morse signals and friend interactions.',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.teal[700],
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                  _buildInfoCard(
+                    icon: Icons.info_outline_rounded,
+                    title: 'About MeNotifications',
+                    content: 'These settings control sound, vibration, and screen lighting for all your MeWorld notifications including Morse signals and friend interactions.',
+                    color: tealColor,
                   ),
                 ],
               ),

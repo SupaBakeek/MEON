@@ -8,7 +8,7 @@ class FriendsPage extends StatefulWidget {
   final String currentUserId;
   final String currentUserName;
   final Future<void> Function(String friendId, bool currentValue)
-  toggleVisibilityCallback;
+      toggleVisibilityCallback;
   final Map<String, bool> cachedVisibility;
   final Function(String, String) setMorseReceiver;
 
@@ -27,21 +27,19 @@ class FriendsPage extends StatefulWidget {
 
 class _FriendsPageState extends State<FriendsPage> {
   final TextEditingController _controller = TextEditingController();
-  final CollectionReference users = FirebaseFirestore.instance.collection(
-    'users',
-  );
+  final CollectionReference users = FirebaseFirestore.instance.collection('users');
 
   static const int pageSize = 20;
   List<String> friendIds = [];
   Map<String, Map<String, dynamic>> friendDataMap = {}; // cache friend data
 
-  final bool _isLoading = false;
   bool _isSendingRequest = false;
   String? _lastDocumentId;
   bool _hasMore = true;
   bool _isPaginating = false;
 
   Timer? _debounceTimer;
+  StreamSubscription<QuerySnapshot>? _friendsSubscription;
 
   @override
   void initState() {
@@ -52,12 +50,10 @@ class _FriendsPageState extends State<FriendsPage> {
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _friendsSubscription?.cancel();
     _controller.dispose();
     super.dispose();
   }
-
-  // Real-time listener for friends and their data with pagination support
-  StreamSubscription<QuerySnapshot>? _friendsSubscription;
 
   void _listenToFriendsRealtime() {
     _friendsSubscription?.cancel();
@@ -65,43 +61,45 @@ class _FriendsPageState extends State<FriendsPage> {
     _friendsSubscription = users
         .doc(widget.currentUserId)
         .collection('friends')
-        .orderBy(FieldPath.documentId) // ordering by documentId for pagination
+        .orderBy(FieldPath.documentId)
         .limit(pageSize)
         .snapshots()
         .listen((snapshot) async {
-          if (!mounted) return;
+      if (!mounted) return;
 
-          final docs = snapshot.docs;
-          if (docs.isEmpty) {
-            setState(() {
-              friendIds = [];
-              friendDataMap = {};
-              _lastDocumentId = null;
-              _hasMore = false;
-            });
-            return;
-          }
-
-          final ids = docs.map((doc) => doc.id).toList();
-          final lastDocId = ids.isNotEmpty ? ids.last : null;
-
-          // Fetch user info for these friends
-          final friendUsersSnapshot = await users
-              .where(FieldPath.documentId, whereIn: ids)
-              .get();
-
-          final dataMap = {
-            for (var doc in friendUsersSnapshot.docs)
-              doc.id: doc.data() as Map<String, dynamic>,
-          };
-
-          setState(() {
-            friendIds = ids;
-            friendDataMap = dataMap;
-            _lastDocumentId = lastDocId;
-            _hasMore = docs.length == pageSize;
-          });
+      final docs = snapshot.docs;
+      if (docs.isEmpty) {
+        setState(() {
+          friendIds = [];
+          friendDataMap = {};
+          _lastDocumentId = null;
+          _hasMore = false;
         });
+        return;
+      }
+
+      final ids = docs.map((doc) => doc.id).toList();
+      final lastDocId = ids.isNotEmpty ? ids.last : null;
+
+      // Fetch user info for these friends
+      final friendUsersSnapshot = await users
+          .where(FieldPath.documentId, whereIn: ids)
+          .get();
+
+      final dataMap = {
+        for (var doc in friendUsersSnapshot.docs)
+          doc.id: doc.data() as Map<String, dynamic>,
+      };
+
+      if (mounted) {
+        setState(() {
+          friendIds = ids;
+          friendDataMap = dataMap;
+          _lastDocumentId = lastDocId;
+          _hasMore = docs.length == pageSize;
+        });
+      }
+    });
   }
 
   Future<void> _paginateFriends() async {
@@ -136,16 +134,20 @@ class _FriendsPageState extends State<FriendsPage> {
           doc.id: doc.data() as Map<String, dynamic>,
       };
 
-      setState(() {
-        friendIds.addAll(newIds);
-        friendDataMap.addAll(newDataMap);
-        _lastDocumentId = newIds.last;
-        _hasMore = docs.length == pageSize;
-      });
+      if (mounted) {
+        setState(() {
+          friendIds.addAll(newIds);
+          friendDataMap.addAll(newDataMap);
+          _lastDocumentId = newIds.last;
+          _hasMore = docs.length == pageSize;
+        });
+      }
     } catch (e) {
       debugPrint("Pagination error: $e");
     } finally {
-      setState(() => _isPaginating = false);
+      if (mounted) {
+        setState(() => _isPaginating = false);
+      }
     }
   }
 
@@ -163,27 +165,23 @@ class _FriendsPageState extends State<FriendsPage> {
       final currentUserCode = (data?['meCode'] ?? '').toString();
 
       if (code == currentUserCode) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("You can't add yourself to MeWorld!"),
-            backgroundColor: Colors.orange[600],
-          ),
+        _showSnackBar(
+          "You can't add yourself to MeWorld!",
+          Colors.orange[600],
         );
         return;
       }
 
       // Lookup the friend by their MeCode
       final query = await users
-          .where('meCode', isEqualTo: code) // ✅ fixed here
+          .where('meCode', isEqualTo: code)
           .limit(1)
           .get();
 
       if (query.docs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("MeFriend with this code not found."),
-            backgroundColor: Colors.red[600],
-          ),
+        _showSnackBar(
+          "MeFriend with this code not found.",
+          Colors.red[600],
         );
         return;
       }
@@ -193,11 +191,9 @@ class _FriendsPageState extends State<FriendsPage> {
       final friendName = friendDoc['name'] ?? 'Unknown';
 
       if (friendId == widget.currentUserId) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("You can't add yourself to MeWorld!"),
-            backgroundColor: Colors.orange[600],
-          ),
+        _showSnackBar(
+          "You can't add yourself to MeWorld!",
+          Colors.orange[600],
         );
         return;
       }
@@ -209,11 +205,9 @@ class _FriendsPageState extends State<FriendsPage> {
           .doc(friendId)
           .get();
       if (existingFriend.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Already MeFriends!"),
-            backgroundColor: Colors.blue[600],
-          ),
+        _showSnackBar(
+          "Already MeFriends!",
+          Colors.blue[600],
         );
         return;
       }
@@ -226,11 +220,9 @@ class _FriendsPageState extends State<FriendsPage> {
           .get();
 
       if (requestDoc.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("MeFriend request already sent."),
-            backgroundColor: Colors.blue[600],
-          ),
+        _showSnackBar(
+          "MeFriend request already sent.",
+          Colors.blue[600],
         );
         return;
       }
@@ -247,26 +239,33 @@ class _FriendsPageState extends State<FriendsPage> {
             'timestamp': FieldValue.serverTimestamp(),
           });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("MeFriend request sent to $friendName!"),
-          backgroundColor: Colors.teal[600],
-        ),
+      _showSnackBar(
+        "MeFriend request sent to $friendName!",
+        Colors.teal[600],
       );
 
       _controller.clear();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Failed to send MeRequest: $e"),
-          backgroundColor: Colors.red[600],
-        ),
+      _showSnackBar(
+        "Failed to send MeRequest: $e",
+        Colors.red[600],
       );
     } finally {
       if (mounted) {
         setState(() => _isSendingRequest = false);
       }
     }
+  }
+
+  void _showSnackBar(String message, Color? backgroundColor) {
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+      ),
+    );
   }
 
   Future<void> removeFriend(String friendId) async {
@@ -338,23 +337,21 @@ class _FriendsPageState extends State<FriendsPage> {
           .doc(widget.currentUserId)
           .delete();
 
-      setState(() {
-        friendIds.remove(friendId);
-        friendDataMap.remove(friendId);
-      });
+      if (mounted) {
+        setState(() {
+          friendIds.remove(friendId);
+          friendDataMap.remove(friendId);
+        });
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('MeFriend removed from MeWorld.'),
-          backgroundColor: Colors.teal[600],
-        ),
+      _showSnackBar(
+        'MeFriend removed from MeWorld.',
+        Colors.teal[600],
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to remove MeFriend: $e'),
-          backgroundColor: Colors.red[600],
-        ),
+      _showSnackBar(
+        'Failed to remove MeFriend: $e',
+        Colors.red[600],
       );
     }
   }
@@ -362,7 +359,6 @@ class _FriendsPageState extends State<FriendsPage> {
   void _onScrollNotification(ScrollNotification notification) {
     if (notification is ScrollEndNotification &&
         notification.metrics.extentAfter < 300) {
-      // Load more if near the bottom
       _paginateFriends();
     }
   }
@@ -413,7 +409,7 @@ class _FriendsPageState extends State<FriendsPage> {
                   MaterialPageRoute(
                     builder: (_) => FriendRequestsPage(
                       currentUserId: widget.currentUserId,
-                      currentUserName: '',
+                      currentUserName: widget.currentUserName,
                     ),
                   ),
                 );
@@ -487,49 +483,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 maxHeight: MediaQuery.of(context).size.height * 0.4,
               ),
               child: friendIds.isEmpty
-                  ? Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.emoji_people_outlined,
-                            size: 48,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No MeFriends yet',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Add friends using their MeCode below!',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[500],
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
+                  ? _EmptyFriendsWidget()
                   : NotificationListener<ScrollNotification>(
                       onNotification: (notification) {
                         _onScrollNotification(notification);
@@ -541,20 +495,9 @@ class _FriendsPageState extends State<FriendsPage> {
                         separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           if (index == friendIds.length) {
-                            // Loading indicator at the bottom for pagination
-                            if (_isPaginating) {
-                              return Container(
-                                padding: const EdgeInsets.all(16),
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    color: Colors.teal,
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              );
-                            } else {
-                              return const SizedBox.shrink();
-                            }
+                            return _isPaginating
+                                ? const _PaginationLoader()
+                                : const SizedBox.shrink();
                           }
 
                           final friendId = friendIds[index];
@@ -564,100 +507,18 @@ class _FriendsPageState extends State<FriendsPage> {
                           final canSeeStatusCached =
                               cachedVisibility[friendId] ?? false;
 
-                          return Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.grey.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
+                          return _FriendCard(
+                            friendName: friendName,
+                            canSeeStatusCached: canSeeStatusCached,
+                            onMorseSelect: () => widget.setMorseReceiver(
+                              friendId,
+                              friendName,
                             ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: Colors.teal[50],
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Icon(
-                                    Icons.person_rounded,
-                                    color: Colors.teal[600],
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        friendName,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.grey[800],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        canSeeStatusCached
-                                            ? 'Can see your Meon'
-                                            : 'Hidden from Meon',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: canSeeStatusCached
-                                              ? Colors.teal[600]
-                                              : Colors.grey[500],
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.radio_button_checked,
-                                    color: Colors.teal[400],
-                                    size: 20,
-                                  ),
-                                  onPressed: () => widget.setMorseReceiver(
-                                    friendId,
-                                    friendName,
-                                  ),
-                                  tooltip: 'Select for Morse',
-                                ),
-                                Switch(
-                                  value: canSeeStatusCached,
-                                  onChanged: (val) {
-                                    widget.toggleVisibilityCallback(
-                                      friendId,
-                                      canSeeStatusCached,
-                                    );
-                                  },
-                                  activeColor: Colors.teal,
-                                  inactiveThumbColor: Colors.grey[300],
-                                  inactiveTrackColor: Colors.grey[200],
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: Icon(
-                                    Icons.person_remove_outlined,
-                                    color: Colors.red[400],
-                                    size: 20,
-                                  ),
-                                  onPressed: () => removeFriend(friendId),
-                                  tooltip: 'Remove MeFriend',
-                                ),
-                              ],
+                            onToggleVisibility: () => widget.toggleVisibilityCallback(
+                              friendId,
+                              canSeeStatusCached,
                             ),
+                            onRemove: () => removeFriend(friendId),
                           );
                         },
                       ),
@@ -667,139 +528,334 @@ class _FriendsPageState extends State<FriendsPage> {
             const SizedBox(height: 32),
 
             // Add friend section
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.teal[100],
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.teal[200],
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.qr_code_rounded,
-                          color: Colors.teal[700],
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Add a MeFriend',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[800],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Enter their MeCode to send a friend request',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _controller,
-                          decoration: InputDecoration(
-                            labelText: 'MeCode',
-                            hintText: 'ABC123',
-                            hintStyle: TextStyle(
-                              color: Colors.grey[400],
-                              fontStyle: FontStyle.italic,
-                            ),
-                            prefixIcon: Icon(
-                              Icons.tag_rounded,
-                              color: Colors.teal[600],
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey[300]!),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey[300]!),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.teal,
-                                width: 2,
-                              ),
-                            ),
-                            floatingLabelStyle: TextStyle(
-                              color: Colors.teal,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
-                          ),
-                          enabled: !_isSendingRequest,
-                          textCapitalization: TextCapitalization.characters,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: _isSendingRequest
-                              ? null
-                              : () => sendFriendRequestByCode(_controller.text),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.teal,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 20),
-                          ),
-                          child: _isSendingRequest
-                              ? const SizedBox(
-                                  height: 18,
-                                  width: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'MeSend',
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            _AddFriendSection(
+              controller: _controller,
+              isSendingRequest: _isSendingRequest,
+              onSendRequest: () => sendFriendRequestByCode(_controller.text),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// =======================
+/// WIDGETS
+/// =======================
+
+class _EmptyFriendsWidget extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.emoji_people_outlined,
+            size: 48,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No MeFriends yet',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add friends using their MeCode below!',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[500],
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaginationLoader extends StatelessWidget {
+  const _PaginationLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: CircularProgressIndicator(
+          color: Colors.teal,
+          strokeWidth: 2,
+        ),
+      ),
+    );
+  }
+}
+
+class _FriendCard extends StatelessWidget {
+  final String friendName;
+  final bool canSeeStatusCached;
+  final VoidCallback onMorseSelect;
+  final VoidCallback onToggleVisibility;
+  final VoidCallback onRemove;
+
+  const _FriendCard({
+    required this.friendName,
+    required this.canSeeStatusCached,
+    required this.onMorseSelect,
+    required this.onToggleVisibility,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.teal[50],
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.person_rounded,
+              color: Colors.teal[600],
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  friendName,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  canSeeStatusCached
+                      ? 'Can see your Meon'
+                      : 'Hidden from Meon',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: canSeeStatusCached
+                        ? Colors.teal[600]
+                        : Colors.grey[500],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.radio_button_checked,
+              color: Colors.teal[400],
+              size: 20,
+            ),
+            onPressed: onMorseSelect,
+            tooltip: 'Select for Morse',
+          ),
+          Switch(
+            value: canSeeStatusCached,
+            onChanged: (val) => onToggleVisibility(),
+            activeColor: Colors.teal,
+            inactiveThumbColor: Colors.grey[300],
+            inactiveTrackColor: Colors.grey[200],
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(
+              Icons.person_remove_outlined,
+              color: Colors.red[400],
+              size: 20,
+            ),
+            onPressed: onRemove,
+            tooltip: 'Remove MeFriend',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddFriendSection extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isSendingRequest;
+  final VoidCallback onSendRequest;
+
+  const _AddFriendSection({
+    required this.controller,
+    required this.isSendingRequest,
+    required this.onSendRequest,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.teal[100],
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.teal[200],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.qr_code_rounded,
+                  color: Colors.teal[700],
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Add a MeFriend',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Enter their MeCode to send a friend request',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  decoration: InputDecoration(
+                    labelText: 'MeCode',
+                    hintText: 'ABC123',
+                    hintStyle: TextStyle(
+                      color: Colors.grey[400],
+                      fontStyle: FontStyle.italic,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.tag_rounded,
+                      color: Colors.teal[600],
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Colors.teal,
+                        width: 2,
+                      ),
+                    ),
+                    floatingLabelStyle: TextStyle(
+                      color: Colors.teal,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                  ),
+                  enabled: !isSendingRequest,
+                  textCapitalization: TextCapitalization.characters,
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: isSendingRequest ? null : onSendRequest,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                  ),
+                  child: isSendingRequest
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'MeSend',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

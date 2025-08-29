@@ -942,26 +942,42 @@ class _MeonHomePageState extends State<MeonHomePage>
 
   // ==================== BUILD METHOD ====================
 
-  @override
+ @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: _buildAppBar(),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              _buildMainContainer(),
-              const SizedBox(height: 20),
-              _buildProgressSection(),
-              const SizedBox(height: 12),
-              _buildHistorySection(),
-              const SizedBox(height: 12),
-              _buildMorseStatusSection(),
-            ],
-          ),
-        ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildMainContainer(),
+                        const SizedBox(height: 20),
+                        _buildProgressSection(),
+                        const SizedBox(height: 12),
+                        // Replace Expanded with Flexible for history section
+                        Flexible(
+                          child: _buildHistorySection(),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildMorseStatusSection(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1066,9 +1082,9 @@ class _MeonHomePageState extends State<MeonHomePage>
       ),
     );
   }
-
-  Widget _buildHistorySection() {
-    return Expanded(
+Widget _buildHistorySection() {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 400), // Set a max height
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

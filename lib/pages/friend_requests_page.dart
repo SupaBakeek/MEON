@@ -17,140 +17,153 @@ class FriendRequestsPage extends StatefulWidget {
 }
 
 class _FriendRequestsPageState extends State<FriendRequestsPage> {
-  final CollectionReference users = FirebaseFirestore.instance.collection(
-    'users',
-  );
+  final CollectionReference users = FirebaseFirestore.instance.collection('users');
   final Set<String> _loadingRequests = {};
   bool _loadingError = false;
+  bool _isCopying = false;
 
-  // Fetch the user's unique MeCode (one per user)
+  // Cache for MeCode to avoid repeated generation
+  String? _cachedMeCode;
+
+  // Fetch or generate user's MeCode
   Future<String> _getMeCode() async {
-    final namePart = widget.currentUserName.length >= 3
-        ? widget.currentUserName.substring(0, 3)
-        : widget.currentUserName; // take full name if <3 chars
+    if (_cachedMeCode != null) return _cachedMeCode!;
 
-    final idPart = widget.currentUserId.length >= 3
-        ? widget.currentUserId.substring(0, 3)
-        : widget.currentUserId;
     final doc = await users.doc(widget.currentUserId).get();
     final data = doc.data() as Map<String, dynamic>?;
     final code = data?['meCode'] as String?;
-    if (code != null && code is String) return code;
-    // Generate and save if not exist
+    
+    if (code != null) {
+      _cachedMeCode = code;
+      return code;
+    }
+
+    // Generate new code if not exists
+    final namePart = widget.currentUserName.length >= 3
+        ? widget.currentUserName.substring(0, 3)
+        : widget.currentUserName;
+    final idPart = widget.currentUserId.length >= 3
+        ? widget.currentUserId.substring(0, 3)
+        : widget.currentUserId;
+    
     final newCode = (namePart + idPart).toUpperCase();
-    await users.doc(widget.currentUserId).set({
-      'meCode': newCode,
-    }, SetOptions(merge: true));
+    await users.doc(widget.currentUserId).set(
+      {'meCode': newCode},
+      SetOptions(merge: true),
+    );
+    
+    _cachedMeCode = newCode;
     return newCode;
   }
 
-  bool _isCopying = false;
   Future<void> _copyMeCode() async {
     if (_isCopying) return;
-    _isCopying = true;
+    setState(() => _isCopying = true);
 
-    final code = await _getMeCode();
-    await Clipboard.setData(ClipboardData(text: code));
-    if (!mounted) return;
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '${widget.currentUserName}, your MeCode "$code" copied to clipboard!',
-        ),
-        backgroundColor: Colors.teal[600],
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-    await Future.delayed(Duration(seconds: 1));
-    _isCopying = false;
-  }
-
-  Future<void> _acceptRequest(String fromUserId, String fromName) async {
-    setState(() => _loadingRequests.add(fromUserId));
     try {
-      await users
-          .doc(widget.currentUserId)
-          .collection('friends')
-          .doc(fromUserId)
-          .set({'canSeeStatus': true});
-      await users
-          .doc(fromUserId)
-          .collection('friends')
-          .doc(widget.currentUserId)
-          .set({'canSeeStatus': true});
-      await users
-          .doc(widget.currentUserId)
-          .collection('friendRequests')
-          .doc(fromUserId)
-          .delete();
-
-      // Add friend request back to the requester (if you want them to know)
-      await users
-          .doc(fromUserId)
-          .collection('friendRequests')
-          .doc(widget.currentUserId)
-          .set({'name': widget.currentUserName, 'status': 'pending'});
-
+      final code = await _getMeCode();
+      await Clipboard.setData(ClipboardData(text: code));
+      
       if (!mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            '$fromName joined ${widget.currentUserName}\'s MeWorld!',
-          ),
+          content: Text('${widget.currentUserName}, your MeCode "$code" copied to clipboard!'),
           backgroundColor: Colors.teal[600],
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to accept MeRequest: $e'),
-          backgroundColor: Colors.red[600],
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
     } finally {
-      if (!mounted) return;
-      setState(() => _loadingRequests.remove(fromUserId));
+      if (mounted) {
+        setState(() => _isCopying = false);
+      }
     }
   }
 
-  Future<void> _rejectRequest(String fromUserId, String fromName) async {
-    setState(() => _loadingRequests.add(fromUserId));
-    try {
-      await users
-          .doc(widget.currentUserId)
-          .collection('friendRequests')
-          .doc(fromUserId)
-          .delete();
+  Future<void> _acceptRequest(String fromUserId, String fromName) async {
+    await _processRequest(
+      fromUserId,
+      fromName,
+      action: () async {
+        await users
+            .doc(widget.currentUserId)
+            .collection('friends')
+            .doc(fromUserId)
+            .set({'canSeeStatus': true});
+        await users
+            .doc(fromUserId)
+            .collection('friends')
+            .doc(widget.currentUserId)
+            .set({'canSeeStatus': true});
+        await users
+            .doc(widget.currentUserId)
+            .collection('friendRequests')
+            .doc(fromUserId)
+            .delete();
+        await users
+            .doc(fromUserId)
+            .collection('friendRequests')
+            .doc(widget.currentUserId)
+            .set({'name': widget.currentUserName, 'status': 'pending'});
+      },
+      successMessage: '$fromName joined ${widget.currentUserName}\'s MeWorld!',
+    );
+  }
 
+  Future<void> _rejectRequest(String fromUserId, String fromName) async {
+    await _processRequest(
+      fromUserId,
+      fromName,
+      action: () async {
+        await users
+            .doc(widget.currentUserId)
+            .collection('friendRequests')
+            .doc(fromUserId)
+            .delete();
+      },
+      successMessage: 'MeRequest from $fromName declined.',
+      isError: false,
+    );
+  }
+
+  Future<void> _processRequest(
+    String fromUserId,
+    String fromName, {
+    required Future<void> Function() action,
+    required String successMessage,
+    bool isError = true,
+  }) async {
+    setState(() => _loadingRequests.add(fromUserId));
+    
+    try {
+      await action();
+      
       if (!mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('MeRequest from $fromName declined.'),
-          backgroundColor: Colors.orange[600],
+          content: Text(successMessage),
+          backgroundColor: isError ? Colors.teal[600] : Colors.orange[600],
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
     } catch (e) {
       if (!mounted) return;
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to decline MeRequest: $e'),
+          content: Text('Failed to process MeRequest: $e'),
           backgroundColor: Colors.red[600],
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => _loadingRequests.remove(fromUserId));
+      if (mounted) {
+        setState(() => _loadingRequests.remove(fromUserId));
+      }
     }
   }
 
@@ -161,6 +174,8 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
     return Scaffold(
       backgroundColor: Colors.teal[50],
       appBar: AppBar(
@@ -195,6 +210,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
                 onRetry: () => setState(() => _loadingError = false),
               );
             }
+            
             if (snapshot.connectionState == ConnectionState.waiting) {
               return _LoadingWidget();
             }
@@ -223,9 +239,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
                     itemBuilder: (context, index) {
                       final req = requests[index];
                       final fromId = req.id;
-                      final fromName =
-                          (req.data() as Map<String, dynamic>?)?['name'] ??
-                          'Unknown';
+                      final fromName = (req.data() as Map<String, dynamic>)?['name'] ?? 'Unknown';
                       final isLoading = _loadingRequests.contains(fromId);
 
                       return _RequestCard(
