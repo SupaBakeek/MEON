@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 import 'meon_home_page.dart';
 
@@ -19,13 +21,18 @@ class _SignupPageState extends State<SignupPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  final CollectionReference users = FirebaseFirestore.instance.collection(
-    'users',
-  );
+  final CollectionReference _users = FirebaseFirestore.instance.collection('users');
+
+  // Hash password for security (basic implementation)
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
 
   Future<void> _signup() async {
+    // Clear previous errors
     setState(() {
-      _isLoading = true;
       _errorMessage = null;
     });
 
@@ -33,32 +40,27 @@ class _SignupPageState extends State<SignupPage> {
     final password = _passwordController.text;
     final confirm = _confirmController.text;
 
+    // Validation
     if (username.isEmpty || password.isEmpty || confirm.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please fill all fields.';
-        _isLoading = false;
-      });
+      setState(() => _errorMessage = 'Please fill all fields.');
       return;
     }
 
     if (password.length < 6) {
-      setState(() {
-        _errorMessage = 'Password must be at least 6 characters.';
-        _isLoading = false;
-      });
+      setState(() => _errorMessage = 'Password must be at least 6 characters.');
       return;
     }
 
     if (password != confirm) {
-      setState(() {
-        _errorMessage = 'Passwords do not match.';
-        _isLoading = false;
-      });
+      setState(() => _errorMessage = 'Passwords do not match.');
       return;
     }
 
+    setState(() => _isLoading = true);
+
     try {
-      final usernameQuery = await users
+      // Check if username exists
+      final usernameQuery = await _users
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
@@ -71,21 +73,23 @@ class _SignupPageState extends State<SignupPage> {
         return;
       }
 
-      // Create new user doc with username and password (plaintext here, hash recommended)
-      final newUserDoc = await users.add({
+      // Create new user with hashed password
+      final hashedPassword = _hashPassword(password);
+      final newUserDoc = await _users.add({
         'username': username,
         'name': username,
-        'password': password,
+        'password': hashedPassword,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
+      // Save user data to shared preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_id', newUserDoc.id);
       await prefs.setString('user_name', username);
 
-      //if didnt work wrap with try and catch (navError)
       if (!mounted) return;
-      setState(() => _isLoading = false); // reset loader
+      
+      // Navigate to home page
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -96,18 +100,70 @@ class _SignupPageState extends State<SignupPage> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = 'Signup failed: $e';
+        _errorMessage = 'Signup failed. Please try again.';
         _isLoading = false;
       });
     }
   }
 
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String labelText,
+    required String hintText,
+    required IconData icon,
+    bool obscureText = false,
+    bool enabled = true,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      enabled: enabled,
+      decoration: InputDecoration(
+        labelText: labelText,
+        hintText: hintText,
+        hintStyle: TextStyle(
+          color: Colors.grey[400],
+          fontStyle: FontStyle.italic,
+        ),
+        prefixIcon: Icon(icon, color: Colors.teal[600]),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.teal, width: 2),
+        ),
+        floatingLabelStyle: const TextStyle(
+          color: Colors.teal,
+          fontWeight: FontWeight.w500,
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final tealColor = Colors.teal;
+
     return Scaffold(
-      backgroundColor: Colors.teal[50],
-      appBar: AppBar(backgroundColor: Colors.teal[50]),
+      backgroundColor: tealColor[50],
+      appBar: AppBar(
+        backgroundColor: tealColor[50],
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
@@ -116,18 +172,18 @@ class _SignupPageState extends State<SignupPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header with subtle styling
+                // Header
                 Container(
                   width: 70,
                   height: 70,
                   decoration: BoxDecoration(
-                    color: Colors.teal[100],
+                    color: tealColor[100],
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(
                     Icons.person_add,
                     size: 36,
-                    color: Colors.teal[700],
+                    color: tealColor[700],
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -155,7 +211,7 @@ class _SignupPageState extends State<SignupPage> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.teal[100],
+                    color: tealColor[100],
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -168,128 +224,39 @@ class _SignupPageState extends State<SignupPage> {
                   child: Column(
                     children: [
                       // MeName field
-                      TextField(
+                      _buildTextField(
                         controller: _usernameController,
-                        decoration: InputDecoration(
-                          labelText: 'Mename',
-                          hintText: 'Choose your Mename',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                          ),
-                          prefixIcon: Icon(
-                            Icons.emoji_emotions_outlined,
-                            color: Colors.teal[600],
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.teal,
-                              width: 2,
-                            ),
-                          ),
-                          floatingLabelStyle: TextStyle(
-                            color: Colors.teal,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
-                        ),
+                        labelText: 'Mename',
+                        hintText: 'Choose your Mename',
+                        icon: Icons.emoji_emotions_outlined,
                         enabled: !_isLoading,
                       ),
 
                       const SizedBox(height: 16),
 
                       // MeWord field
-                      TextField(
+                      _buildTextField(
                         controller: _passwordController,
+                        labelText: 'Meword',
+                        hintText: 'Create your Meword',
+                        icon: Icons.password,
                         obscureText: true,
-                        decoration: InputDecoration(
-                          labelText: 'Meword',
-                          hintText: 'Create your Meword',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                          ),
-                          prefixIcon: Icon(
-                            Icons.password,
-                            color: Colors.teal[600],
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.teal,
-                              width: 2,
-                            ),
-                          ),
-                          floatingLabelStyle: TextStyle(
-                            color: Colors.teal,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
-                        ),
                         enabled: !_isLoading,
                       ),
 
                       const SizedBox(height: 16),
 
                       // Confirm MeWord field
-                      TextField(
+                      _buildTextField(
                         controller: _confirmController,
+                        labelText: 'Confirm MeWord',
+                        hintText: 'Confirm your MeWord',
+                        icon: Icons.lock_outline,
                         obscureText: true,
-                        decoration: InputDecoration(
-                          labelText: 'Confirm MeWord',
-                          hintText: 'Confirm your MeWord',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                          ),
-                          prefixIcon: Icon(
-                            Icons.lock_outline,
-                            color: Colors.teal[600],
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.teal,
-                              width: 2,
-                            ),
-                          ),
-                          floatingLabelStyle: TextStyle(
-                            color: Colors.teal,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
-                        ),
                         enabled: !_isLoading,
                       ),
 
+                      // Error message
                       if (_errorMessage != null) ...[
                         const SizedBox(height: 16),
                         Container(
@@ -323,17 +290,17 @@ class _SignupPageState extends State<SignupPage> {
 
                       const SizedBox(height: 24),
 
-                      // MeUP button
+                      // Signup button
                       SizedBox(
                         width: double.infinity,
-                        height: 70,
+                        height: 56,
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _signup,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.teal,
+                            backgroundColor: tealColor,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(40),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             elevation: 0,
                           ),

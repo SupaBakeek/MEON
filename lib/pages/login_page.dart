@@ -5,6 +5,8 @@ import 'package:meon/pages/onboarding_page.dart';
 import 'package:meon/pages/signup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,9 +22,14 @@ class _LoginPageState extends State<LoginPage> {
   bool _meWaiting = false;
   String? _errorMessage;
 
-  final CollectionReference users = FirebaseFirestore.instance.collection(
-    'users',
-  );
+  final CollectionReference _users = FirebaseFirestore.instance.collection('users');
+
+  // Hash password for security (consistent with signup page)
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
 
   bool _validateMeName(String username) {
     final regex = RegExp(r'^[a-zA-Z0-9 ]{2,20}$');
@@ -33,13 +40,19 @@ class _LoginPageState extends State<LoginPage> {
     final username = _meNameController.text.trim();
     final password = _meWordController.text;
 
+    // Clear previous errors
+    setState(() {
+      _errorMessage = null;
+    });
+
+    // Validation
     if (!_validateMeName(username)) {
       setState(() {
-        _errorMessage =
-            'MeName must be 2-20 chars: letters, numbers, spaces only.';
+        _errorMessage = 'MeName must be 2-20 chars: letters, numbers, spaces only.';
       });
       return;
     }
+    
     if (password.isEmpty || password.length < 6) {
       setState(() {
         _errorMessage = 'MeWord must be at least 6 characters.';
@@ -47,15 +60,11 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    setState(() {
-      _errorMessage = null;
-      _meWaiting = true;
-    });
-
+    setState(() => _meWaiting = true);
     SystemChannels.textInput.invokeMethod('TextInput.hide');
 
     try {
-      final query = await users
+      final query = await _users
           .where('username', isEqualTo: username)
           .limit(1)
           .get();
@@ -71,7 +80,9 @@ class _LoginPageState extends State<LoginPage> {
       final userDoc = query.docs.first;
       final userData = userDoc.data() as Map<String, dynamic>;
 
-      if (userData['password'] != password) {
+      // Compare hashed passwords
+      final hashedPassword = _hashPassword(password);
+      if (userData['password'] != hashedPassword) {
         setState(() {
           _errorMessage = 'Incorrect MeWord.';
           _meWaiting = false;
@@ -79,11 +90,14 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
+      // Save user data to shared preferences
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_id', userDoc.id);
       await prefs.setString('user_name', username);
 
       if (!mounted) return;
+      
+      // Navigate to home page
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -94,8 +108,9 @@ class _LoginPageState extends State<LoginPage> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = 'MeIN failed: $e';
+        _errorMessage = 'Login failed. Please try again.';
         _meWaiting = false;
       });
     }
@@ -114,6 +129,123 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  void _goToOnboarding() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const OnboardingPage()),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String labelText,
+    required String hintText,
+    required IconData icon,
+    bool obscureText = false,
+    Widget? suffixIcon,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscureText,
+      decoration: InputDecoration(
+        labelText: labelText,
+        hintText: hintText,
+        hintStyle: TextStyle(
+          color: Colors.grey[400],
+          fontStyle: FontStyle.italic,
+        ),
+        prefixIcon: Icon(icon, color: Colors.teal[600]),
+        suffixIcon: suffixIcon,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.teal, width: 2),
+        ),
+        floatingLabelStyle: const TextStyle(
+          color: Colors.teal,
+          fontWeight: FontWeight.w500,
+        ),
+        filled: true,
+        fillColor: Colors.grey[50],
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(String message) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.info_outline,
+            color: Colors.red[600],
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: Colors.red[700],
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuthButton({
+    required String text,
+    required VoidCallback onPressed,
+    required bool isLoading,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed: isLoading ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.teal,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 0,
+        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _meNameController.dispose();
@@ -123,8 +255,10 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final tealColor = Colors.teal;
+
     return Scaffold(
-      backgroundColor: Colors.teal[50],
+      backgroundColor: tealColor[50],
       body: Center(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -139,13 +273,13 @@ class _LoginPageState extends State<LoginPage> {
                   width: 70,
                   height: 70,
                   decoration: BoxDecoration(
-                    color: Colors.teal[100],
+                    color: tealColor[100],
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(
                     Icons.emoji_people,
                     size: 36,
-                    color: Colors.teal[700],
+                    color: tealColor[700],
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -154,7 +288,7 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.w600,
-                    color: Colors.teal[800],
+                    color: tealColor[800],
                     letterSpacing: -1,
                   ),
                 ),
@@ -174,7 +308,7 @@ class _LoginPageState extends State<LoginPage> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: Colors.teal[100],
+                    color: tealColor[100],
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -187,172 +321,60 @@ class _LoginPageState extends State<LoginPage> {
                   child: Column(
                     children: [
                       // MeName field
-                      TextField(
+                      _buildTextField(
                         controller: _meNameController,
-                        decoration: InputDecoration(
-                          labelText: 'MeName',
-                          hintText: 'What\'s your MeName?',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                          ),
-                          prefixIcon: Icon(
-                            Icons.emoji_emotions_outlined,
-                            color: Colors.teal[600],
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.teal,
-                              width: 2,
-                            ),
-                          ),
-                          floatingLabelStyle: TextStyle(
-                            color: Colors.teal,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
-                        ),
+                        labelText: 'MeName',
+                        hintText: 'What\'s your MeName?',
+                        icon: Icons.emoji_emotions_outlined,
                       ),
 
                       const SizedBox(height: 16),
 
                       // MeWord field
-                      TextField(
+                      _buildTextField(
                         controller: _meWordController,
+                        labelText: 'MeWord',
+                        hintText: 'Shh... your secret MeWord',
+                        icon: Icons.password,
                         obscureText: _meHidden,
-                        decoration: InputDecoration(
-                          labelText: 'MeWord',
-                          hintText: 'Shh... your secret MeWord',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _meHidden
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.grey[500],
                           ),
-                          prefixIcon: Icon(
-                            Icons.password,
-                            color: Colors.teal[600],
-                          ),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _meHidden
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              color: Colors.grey[500],
-                            ),
-                            onPressed: _toggleMeVision,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.teal,
-                              width: 2,
-                            ),
-                          ),
-                          floatingLabelStyle: TextStyle(
-                            color: Colors.teal,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
+                          onPressed: _toggleMeVision,
                         ),
                       ),
 
+                      // Error message
                       if (_errorMessage != null) ...[
                         const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red[200]!),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.info_outline,
-                                color: Colors.red[600],
-                                size: 18,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _errorMessage!,
-                                  style: TextStyle(
-                                    color: Colors.red[700],
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                        _buildErrorWidget(_errorMessage!),
                       ],
 
                       const SizedBox(height: 24),
 
                       // ME IN button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 70,
-                        child: ElevatedButton(
-                          onPressed: _meWaiting ? null : _login,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.teal,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(40),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: _meWaiting
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text(
-                                  'ME IN',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                        ),
+                      _buildAuthButton(
+                        text: 'ME IN',
+                        onPressed: _login,
+                        isLoading: _meWaiting,
                       ),
                     ],
                   ),
                 ),
 
-                TextButton(onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const OnboardingPage(),
-                    ),
-                  );
-                }, child: const Text('Skip Onboarding')),
+                const SizedBox(height: 16),
 
-                const SizedBox(height: 24),
+                // Skip onboarding button
+                TextButton(
+                  onPressed: _goToOnboarding,
+                  child: const Text('Skip Onboarding'),
+                ),
+
+                const SizedBox(height: 16),
 
                 // Sign up link
                 TextButton(
@@ -365,7 +387,7 @@ class _LoginPageState extends State<LoginPage> {
                         TextSpan(
                           text: 'MeUP!',
                           style: TextStyle(
-                            color: Colors.teal,
+                            color: tealColor,
                             fontWeight: FontWeight.w600,
                             fontStyle: FontStyle.italic,
                           ),
