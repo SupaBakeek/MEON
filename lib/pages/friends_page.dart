@@ -238,6 +238,7 @@ class _FriendsPageState extends State<FriendsPage> {
             'status': 'pending',
             'timestamp': FieldValue.serverTimestamp(),
           });
+          
 
       _showSnackBar(
         "MeFriend request sent to $friendName!",

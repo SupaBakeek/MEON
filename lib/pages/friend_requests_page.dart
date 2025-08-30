@@ -239,7 +239,7 @@ class _FriendRequestsPageState extends State<FriendRequestsPage> {
                     itemBuilder: (context, index) {
                       final req = requests[index];
                       final fromId = req.id;
-                      final fromName = (req.data() as Map<String, dynamic>)?['name'] ?? 'Unknown';
+                      final fromName = (req.data() as Map<String, dynamic>)['name'] ?? 'Unknown';
                       final isLoading = _loadingRequests.contains(fromId);
 
                       return _RequestCard(
